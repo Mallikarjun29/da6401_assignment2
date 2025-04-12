@@ -1,5 +1,6 @@
 import os
 import torch
+import numpy as np
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
 
@@ -95,22 +96,11 @@ class INaturalistDataset:
 
 
 class DataPreparation:
-    """
-    A class to prepare data loaders for the iNaturalist dataset.
-    """
     def __init__(self, data_dir, batch_size=32, num_workers=4):
-        """
-        Initializes the data preparation class.
-
-        Args:
-            data_dir (str): Path to the dataset directory.
-            batch_size (int): Number of samples per batch.
-            num_workers (int): Number of subprocesses to use for data loading.
-        """
         self.data_dir = data_dir
         self.batch_size = batch_size
         self.num_workers = num_workers
-
+        
         # Define data transformations
         self.transform = transforms.Compose([
             transforms.Resize((224, 224)),
@@ -119,19 +109,54 @@ class DataPreparation:
         ])
 
     def get_data_loaders(self):
-        """
-        Prepares and returns data loaders for training and validation.
-
-        Returns:
-            train_loader, val_loader: Data loaders for training and validation.
-        """
-        dataset = INaturalistDataset(self.data_dir, transform=self.transform)
-        train_dataset = dataset.get_dataset('train')
-        val_dataset = dataset.get_dataset('val')
-
-        train_loader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True, num_workers=self.num_workers)
-        val_loader = DataLoader(val_dataset, batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers)
-
+        # Load the full training dataset
+        full_dataset = datasets.ImageFolder(
+            os.path.join(self.data_dir, 'train'),
+            transform=self.transform
+        )
+        
+        # Calculate lengths for split
+        num_classes = len(full_dataset.classes)
+        samples_per_class = {}
+        for idx, (_, label) in enumerate(full_dataset.samples):
+            if label not in samples_per_class:
+                samples_per_class[label] = []
+            samples_per_class[label].append(idx)
+            
+        train_indices = []
+        val_indices = []
+        
+        # Perform stratified split
+        for label in range(num_classes):
+            class_indices = samples_per_class[label]
+            num_val = int(len(class_indices) * 0.2)  # 20% for validation
+            
+            # Randomly select validation indices for this class
+            val_idx = np.random.choice(class_indices, num_val, replace=False)
+            train_idx = list(set(class_indices) - set(val_idx))
+            
+            train_indices.extend(train_idx)
+            val_indices.extend(val_idx)
+        
+        # Create train and validation datasets
+        train_dataset = torch.utils.data.Subset(full_dataset, train_indices)
+        val_dataset = torch.utils.data.Subset(full_dataset, val_indices)
+        
+        # Create data loaders
+        train_loader = DataLoader(
+            train_dataset,
+            batch_size=self.batch_size,
+            shuffle=True,
+            num_workers=self.num_workers
+        )
+        
+        val_loader = DataLoader(
+            val_dataset,
+            batch_size=self.batch_size,
+            shuffle=False,
+            num_workers=self.num_workers
+        )
+        
         return train_loader, val_loader
 
 
