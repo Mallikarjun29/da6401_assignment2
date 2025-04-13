@@ -3,3 +3,4 @@ partA/wandb
 partA/best_model.pth
 __pycache__
 partA/__pycache__
+inaturalist_12k
