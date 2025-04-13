@@ -5,65 +5,79 @@ class CNNModel(nn.Module):
     def __init__(self, 
                  num_classes=10,
                  input_channels=3,
-                 num_conv_blocks=5,
-                 filters_per_layer=64,
-                 filter_size=(3,3),
-                 pool_size=(2,2),
-                 dense_neurons=1024,
+                 conv_filters=[16, 32, 64, 128, 256],
+                 filter_size=3,
+                 pool_size=2,
+                 dense_neurons=[512],
                  conv_activation=nn.ReLU,
-                 dense_activation=nn.ReLU):
+                 dense_activation=nn.ReLU,
+                 dropout_rate=0.5):
         super(CNNModel, self).__init__()
         
-        self.features = nn.Sequential()
-        current_channels = input_channels
+        self.features = nn.ModuleList()
+        in_channels = input_channels
         
-        # Build conv-activation-maxpool blocks
-        for i in range(num_conv_blocks):
-            # Convolution layer
-            self.features.add_module(f'conv{i+1}', 
-                nn.Conv2d(current_channels, filters_per_layer, filter_size, padding='same'))
+        # Create convolutional blocks with configurable parameters
+        for out_channels in conv_filters:
+            conv_block = nn.Sequential(
+                nn.Conv2d(in_channels, out_channels, 
+                         kernel_size=filter_size, 
+                         padding='same'),
+                conv_activation(),
+                nn.MaxPool2d(pool_size)
+            )
+            self.features.append(conv_block)
+            in_channels = out_channels
             
-            # Activation layer
-            self.features.add_module(f'act{i+1}', conv_activation())
-            
-            # Max pooling layer with small pool size to prevent excessive downsampling
-            self.features.add_module(f'pool{i+1}', nn.MaxPool2d((1, 1)))
-            
-            current_channels = filters_per_layer
-        
-        # Add adaptive pooling to get fixed size output
-        self.features.add_module('adaptive_pool', nn.AdaptiveAvgPool2d((4, 4)))
+        # Adaptive pooling to get fixed size regardless of input
+        self.adaptive_pool = nn.AdaptiveAvgPool2d((4, 4))
         
         # Flatten layer
-        self.features.add_module('flatten', nn.Flatten())
+        self.flatten = nn.Flatten()
         
-        # Calculate the size of flattened features
-        flattened_size = filters_per_layer * 4 * 4  # Fixed size from adaptive pooling
+        # Create dense layers
+        self.classifier = nn.ModuleList()
+        prev_neurons = conv_filters[-1] * 4 * 4
         
-        # Dense layers
-        self.classifier = nn.Sequential(
-            nn.Linear(flattened_size, dense_neurons),
-            dense_activation(),
-            nn.Dropout(0.5),
-            nn.Linear(dense_neurons, num_classes)
-        )
+        for neurons in dense_neurons:
+            dense_block = nn.Sequential(
+                nn.Linear(prev_neurons, neurons),
+                dense_activation(),
+                nn.Dropout(dropout_rate)
+            )
+            self.classifier.append(dense_block)
+            prev_neurons = neurons
+            
+        # Final classification layer
+        self.classifier.append(nn.Linear(prev_neurons, num_classes))
     
     def forward(self, x):
-        x = self.features(x)
-        x = self.classifier(x)
+        # Forward through convolutional blocks
+        for feature_block in self.features:
+            x = feature_block(x)
+        
+        # Final layers
+        x = self.adaptive_pool(x)
+        x = self.flatten(x)
+        
+        # Forward through dense layers
+        for classifier_block in self.classifier:
+            x = classifier_block(x)
+        
         return x
 
-# Example usage
 if __name__ == "__main__":
-    # Example configuration with 5 layers
+    # Example usage with custom parameters
     model = CNNModel(
         num_classes=10,
         input_channels=3,
-        num_conv_blocks=5,
-        filters_per_layer=64,
-        filter_size=(3,3),
-        pool_size=(2,2),
-        dense_neurons=1024
+        conv_filters=[32, 64, 128, 256, 512],  # Custom filter sizes
+        filter_size=5,  # Larger filter size
+        pool_size=2,
+        dense_neurons=[1024, 512],  # Two dense layers
+        conv_activation=nn.ReLU,  # Can be changed to nn.LeakyReLU etc.
+        dense_activation=nn.ReLU,
+        dropout_rate=0.5
     )
     
     # Print model architecture
