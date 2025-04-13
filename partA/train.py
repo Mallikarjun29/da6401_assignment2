@@ -5,7 +5,6 @@ from torch.utils.data import random_split
 from prepare_data import DataPreparation
 from model import CNNModel
 import numpy as np
-import gc
 
 def train_model(model, train_loader, val_loader, num_epochs=10, device='cpu'):
     criterion = nn.CrossEntropyLoss()
