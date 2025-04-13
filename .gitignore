@@ -1,0 +1,5 @@
+venv
+partA/wandb
+partA/best_model.pth
+__pycache__
+partA/__pycache__

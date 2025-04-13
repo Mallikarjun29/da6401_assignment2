@@ -1,19 +1,21 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import random_split
+import wandb
 from prepare_data import DataPreparation
 from model import CNNModel
 import numpy as np
 
-def train_model(model, train_loader, val_loader, num_epochs=10, device='cpu'):
+def train_model(model, train_loader, val_loader, config):
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=0.001)
+    optimizer = optim.Adam(model.parameters(), lr=config.learning_rate)
     
-    model = model.to(device)
+    # Watch model in wandb
+    wandb.watch(model, criterion, log="all")
+    
     best_val_acc = 0.0
     
-    for epoch in range(num_epochs):
+    for epoch in range(config.epochs):
         # Training phase
         model.train()
         running_loss = 0.0
@@ -21,7 +23,6 @@ def train_model(model, train_loader, val_loader, num_epochs=10, device='cpu'):
         total = 0
         
         for inputs, labels in train_loader:
-            inputs, labels = inputs.to(device), labels.to(device)
             optimizer.zero_grad()
             outputs = model(inputs)
             loss = criterion(outputs, labels)
@@ -43,7 +44,6 @@ def train_model(model, train_loader, val_loader, num_epochs=10, device='cpu'):
         
         with torch.no_grad():
             for inputs, labels in val_loader:
-                inputs, labels = inputs.to(device), labels.to(device)
                 outputs = model(inputs)
                 loss = criterion(outputs, labels)
                 val_loss += loss.item()
@@ -53,45 +53,66 @@ def train_model(model, train_loader, val_loader, num_epochs=10, device='cpu'):
         
         val_acc = 100. * correct / total
         
-        print(f'Epoch [{epoch+1}/{num_epochs}]')
-        print(f'Training Loss: {running_loss/len(train_loader):.3f}, Acc: {train_acc:.2f}%')
-        print(f'Validation Loss: {val_loss/len(val_loader):.3f}, Acc: {val_acc:.2f}%')
+        # Log metrics to wandb
+        wandb.log({
+            "epoch": epoch,
+            "train_loss": running_loss/len(train_loader),
+            "train_acc": train_acc,
+            "val_loss": val_loss/len(val_loader),
+            "val_acc": val_acc
+        })
         
         if val_acc > best_val_acc:
             best_val_acc = val_acc
             torch.save(model.state_dict(), 'best_model.pth')
+            wandb.save('best_model.pth')
+
+def sweep_train():
+    # Load dataset
+    data_directory = "/home/mallikarjun/da6401_assignment2/inaturalist_12K"
+    data_preparation = DataPreparation(data_directory, batch_size=32)
+    train_loader, val_loader = data_preparation.get_data_loaders()
+    
+    def train():
+        # Initialize wandb with sweep config
+        with wandb.init(entity='da24s009-indiam-institute-of-technology-madras', 
+                       project="da6401_assignment_2") as run:
+            # Access sweep config
+            config = wandb.config
+            
+            # Create model with sweep config
+            model = CNNModel(
+                num_classes=10,
+                conv_filters=[config.n_filters] * config.n_layers,
+                filter_size=3,
+                dense_neurons=[config.dense_neurons],
+                conv_activation=getattr(nn, config.activation),
+                dropout_rate=config.dropout
+            )
+            
+            # Train model
+            train_model(model, train_loader, val_loader, config)
+
+    return train
 
 if __name__ == "__main__":
-    # Set device
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print(f"Using device: {device}")
+    # Define sweep configuration
+    sweep_config = {
+        'method': 'random',
+        'metric': {'name': 'val_acc', 'goal': 'maximize'},
+        'parameters': {
+            'n_filters': {'values': [3, 3, 3]},
+            'n_layers': {'values': [3, 4, 5]},
+            'activation': {'values': ['ReLU', 'GELU', 'SiLU']},
+            'dense_neurons': {'values': [256, 512, 1024]},
+            'dropout': {'values': [0.2, 0.3, 0.5]},
+            'learning_rate': {'values': [1e-3, 1e-4]},
+            'epochs': {'value': 10}
+        }
+    }
     
-    try:
-        # Load dataset
-        data_directory = "/home/mallikarjun/da6401_assignment2/inaturalist_12K"
-        data_preparation = DataPreparation(data_directory, batch_size=32)
-        train_loader, val_loader = data_preparation.get_data_loaders()
-        
-        num_classes = len(train_loader.dataset.dataset.classes)
-        print(f"\nNumber of classes: {num_classes}")
-        print("Class names:", train_loader.dataset.dataset.classes)
-        
-        # Create model with memory-efficient settings
-        model = CNNModel(
-            num_classes=10,
-            input_channels=3,
-            conv_filters=[32, 64, 128, 256],  # Custom filter sizes
-            filter_size=3,  # Larger filter size
-            pool_size=2,
-            dense_neurons=[512],  # Two dense layers
-            conv_activation=nn.ReLU,  # Can be changed to nn.LeakyReLU etc.
-            dense_activation=nn.ReLU,
-            dropout_rate=0.5
-        )
-        
-        # Train model
-        train_model(model, train_loader, val_loader, num_epochs=10, device=device)
-        
-    except RuntimeError as e:
-        print(f"Runtime Error: {e}")
-        print("Try reducing batch size or model size further if memory issues persist")
+    # Initialize sweep
+    sweep_id = wandb.sweep(sweep_config, project="da6401_assignment_2")
+    
+    # Run sweep
+    wandb.agent(sweep_id, function=sweep_train(), count=10)
