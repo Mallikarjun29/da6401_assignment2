@@ -6,9 +6,17 @@ from prepare_data import DataPreparation
 from model import CNNModel
 import numpy as np
 
+# Add device configuration
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+print(f"Using device: {device}")
+
 def train_model(model, train_loader, val_loader, config):
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=config.learning_rate)
+    
+    # Move model to GPU
+    model = model.to(device)
+    criterion = criterion.to(device)
     
     # Watch model in wandb
     wandb.watch(model, criterion, log="all")
@@ -23,6 +31,9 @@ def train_model(model, train_loader, val_loader, config):
         total = 0
         
         for inputs, labels in train_loader:
+            # Move data to GPU
+            inputs, labels = inputs.to(device), labels.to(device)
+            
             optimizer.zero_grad()
             outputs = model(inputs)
             loss = criterion(outputs, labels)
@@ -44,6 +55,9 @@ def train_model(model, train_loader, val_loader, config):
         
         with torch.no_grad():
             for inputs, labels in val_loader:
+                # Move data to GPU
+                inputs, labels = inputs.to(device), labels.to(device)
+                
                 outputs = model(inputs)
                 loss = criterion(outputs, labels)
                 val_loss += loss.item()
@@ -112,7 +126,7 @@ def sweep_train():
             train_model(model, train_loader, val_loader, config)
 
     return train
-
+# bf3_nl4_fsdoubling_actGELU_dn256_cdr0_ddr0.5_lr0.001_ep20
 if __name__ == "__main__":
     # Updated sweep configuration with early stopping
     sweep_config = {
@@ -120,11 +134,6 @@ if __name__ == "__main__":
         'metric': {
             'name': 'val_acc',
             'goal': 'maximize'
-        },
-        'early_terminate': {
-            'type': 'hyperband',
-            'min_iter': 3,
-            'eta': 2
         },
         'parameters': {
             'base_filters': {'values': [32, 64, 128]},
@@ -135,7 +144,7 @@ if __name__ == "__main__":
             'conv_dropout': {'values': [0, 0.1]},
             'dense_dropout': {'values': [0.3, 0.4, 0.5]},
             'learning_rate': {'values': [1e-3, 1e-4]},
-            'epochs': {'values': [20]}
+            'epochs': {'values': [5, 10, 15, 20]}
         }
     }
     
@@ -147,4 +156,4 @@ if __name__ == "__main__":
     )
     
     # Run sweep
-    wandb.agent(sweep_id, function=sweep_train(), count=10)
+    wandb.agent(sweep_id, function=sweep_train(), count=100)

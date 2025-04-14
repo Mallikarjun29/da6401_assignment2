@@ -69,24 +69,28 @@ class CNNModel(nn.Module):
         return x
 
 if __name__ == "__main__":
+    # Set device
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print(f"Using device: {device}")
+    
     # Example usage with custom parameters
     model = CNNModel(
         num_classes=10,
         input_channels=3,
-        conv_filters=[32, 64, 128, 256, 512],  # Custom filter sizes
-        filter_size=3,  # Larger filter size
+        conv_filters=[32, 64, 128, 256, 512],
+        filter_size=3,
         pool_size=2,
-        dense_neurons=[1024, 512],  # Two dense layers
-        conv_activation=nn.ReLU,  # Can be changed to nn.LeakyReLU etc.
+        dense_neurons=[1024, 512],
+        conv_activation=nn.ReLU,
         dense_activation=nn.ReLU,
-        conv_dropout_rate=0.1,    # Example conv dropout rate
-        dense_dropout_rate=0.5    # Example dense dropout rate
-    )
+        conv_dropout_rate=0.1,
+        dense_dropout_rate=0.5
+    ).to(device)  # Move model to GPU
     
     # Print model architecture
     print(model)
     
-    # Test with random input
-    x = torch.randn(1, 3, 224, 224)
+    # Test with random input on GPU
+    x = torch.randn(1, 3, 224, 224).to(device)
     output = model(x)
     print(f"Output shape: {output.shape}")
