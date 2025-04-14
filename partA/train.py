@@ -94,7 +94,7 @@ def get_filter_counts(base_filters, n_layers, strategy):
 
 def sweep_train():
     # Load dataset
-    data_directory = "/home/mallikarjun/da6401_assignment2/inaturalist_12K"
+    data_directory = "../inaturalist_12K"
     data_preparation = DataPreparation(data_directory, batch_size=32)
     train_loader, val_loader = data_preparation.get_data_loaders()
     

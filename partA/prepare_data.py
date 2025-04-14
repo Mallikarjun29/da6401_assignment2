@@ -162,7 +162,7 @@ class DataPreparation:
 
 # Example usage
 if __name__ == "__main__":
-    data_directory = "/home/mallikarjun/da6401_assignment2/inaturalist_12K"
+    data_directory = "../inaturalist_12K"
     dataset = INaturalistDataset(data_directory)
     
     print("\nValidating training dataset structure:")
