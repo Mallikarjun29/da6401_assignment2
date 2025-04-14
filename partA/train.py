@@ -67,6 +67,17 @@ def train_model(model, train_loader, val_loader, config):
             torch.save(model.state_dict(), 'best_model.pth')
             wandb.save('best_model.pth')
 
+def get_filter_counts(base_filters, n_layers, strategy):
+    """Helper function to generate filter counts based on strategy"""
+    if strategy == 'same':
+        return [base_filters] * n_layers
+    elif strategy == 'doubling':
+        return [base_filters * (2**i) for i in range(n_layers)]
+    elif strategy == 'halving':
+        return [base_filters // (2**i) for i in range(n_layers)]
+    else:
+        return [base_filters] * n_layers
+
 def sweep_train():
     # Load dataset
     data_directory = "/home/mallikarjun/da6401_assignment2/inaturalist_12K"
@@ -74,45 +85,66 @@ def sweep_train():
     train_loader, val_loader = data_preparation.get_data_loaders()
     
     def train():
-        # Initialize wandb with sweep config
-        with wandb.init(entity='da24s009-indiam-institute-of-technology-madras', 
-                       project="da6401_assignment_2") as run:
-            # Access sweep config
+        with wandb.init() as run:  # Remove entity and project from here
             config = wandb.config
             
-            # Create model with sweep config
+            conv_filters = get_filter_counts(
+                config.base_filters, 
+                config.n_layers, 
+                config.filter_strategy
+            )
+            
+            # Updated model creation with separate dropout rates
             model = CNNModel(
                 num_classes=10,
-                conv_filters=[config.n_filters] * config.n_layers,
+                conv_filters=conv_filters,
                 filter_size=3,
                 dense_neurons=[config.dense_neurons],
                 conv_activation=getattr(nn, config.activation),
-                dropout_rate=config.dropout
+                dense_activation=getattr(nn, config.activation),
+                conv_dropout_rate=config.conv_dropout,
+                dense_dropout_rate=config.dense_dropout
             )
             
-            # Train model
+            # Set run name without calling save
+            run.name = f"bf{config.base_filters}_nl{config.n_layers}_fs{config.filter_strategy}_act{config.activation}_dn{config.dense_neurons}_cdr{config.conv_dropout}_ddr{config.dense_dropout}_lr{config.learning_rate}_ep{config.epochs}"
+            
             train_model(model, train_loader, val_loader, config)
 
     return train
 
 if __name__ == "__main__":
-    # Define sweep configuration
+    # Updated sweep configuration with early stopping
     sweep_config = {
-        'method': 'random',
-        'metric': {'name': 'val_acc', 'goal': 'maximize'},
+        'method': 'bayes',
+        'metric': {
+            'name': 'val_acc',
+            'goal': 'maximize'
+        },
+        'early_terminate': {
+            'type': 'hyperband',
+            'min_iter': 3,
+            'eta': 2
+        },
         'parameters': {
-            'n_filters': {'values': [3, 3, 3]},
-            'n_layers': {'values': [3, 4, 5]},
+            'base_filters': {'values': [32, 64, 128]},
+            'n_layers': {'values': [4, 5]},
+            'filter_strategy': {'values': ['same', 'doubling', 'halving']},
             'activation': {'values': ['ReLU', 'GELU', 'SiLU']},
             'dense_neurons': {'values': [256, 512, 1024]},
-            'dropout': {'values': [0.2, 0.3, 0.5]},
+            'conv_dropout': {'values': [0, 0.1]},
+            'dense_dropout': {'values': [0.3, 0.4, 0.5]},
             'learning_rate': {'values': [1e-3, 1e-4]},
-            'epochs': {'value': 10}
+            'epochs': {'values': [20]}
         }
     }
     
-    # Initialize sweep
-    sweep_id = wandb.sweep(sweep_config, project="da6401_assignment_2")
+    # Initialize sweep with entity and project
+    sweep_id = wandb.sweep(
+        sweep_config,
+        entity='da24s009-indiam-institute-of-technology-madras',
+        project="da6401_assignment_2"
+    )
     
     # Run sweep
     wandb.agent(sweep_id, function=sweep_train(), count=10)

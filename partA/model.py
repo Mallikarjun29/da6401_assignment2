@@ -5,13 +5,14 @@ class CNNModel(nn.Module):
     def __init__(self, 
                  num_classes=10,
                  input_channels=3,
-                 conv_filters=[16, 32, 64, 128, 256],
+                 conv_filters=[32, 32, 32, 32, 32],
                  filter_size=3,
                  pool_size=2,
                  dense_neurons=[512],
                  conv_activation=nn.ReLU,
                  dense_activation=nn.ReLU,
-                 dropout_rate=0.5):
+                 conv_dropout_rate=0.1,    # Lower dropout for conv layers
+                 dense_dropout_rate=0.5):  # Higher dropout for dense layers
         super(CNNModel, self).__init__()
         
         self.features = nn.ModuleList()
@@ -24,6 +25,7 @@ class CNNModel(nn.Module):
                          kernel_size=filter_size, 
                          padding='same'),
                 conv_activation(),
+                nn.Dropout2d(p=conv_dropout_rate),  # Spatial dropout after activation
                 nn.MaxPool2d(pool_size)
             )
             self.features.append(conv_block)
@@ -43,12 +45,12 @@ class CNNModel(nn.Module):
             dense_block = nn.Sequential(
                 nn.Linear(prev_neurons, neurons),
                 dense_activation(),
-                nn.Dropout(dropout_rate)
+                nn.Dropout(p=dense_dropout_rate)  # Regular dropout for dense layers
             )
             self.classifier.append(dense_block)
             prev_neurons = neurons
             
-        # Final classification layer
+        # Final classification layer (no dropout before output)
         self.classifier.append(nn.Linear(prev_neurons, num_classes))
     
     def forward(self, x):
@@ -72,12 +74,13 @@ if __name__ == "__main__":
         num_classes=10,
         input_channels=3,
         conv_filters=[32, 64, 128, 256, 512],  # Custom filter sizes
-        filter_size=5,  # Larger filter size
+        filter_size=3,  # Larger filter size
         pool_size=2,
         dense_neurons=[1024, 512],  # Two dense layers
         conv_activation=nn.ReLU,  # Can be changed to nn.LeakyReLU etc.
         dense_activation=nn.ReLU,
-        dropout_rate=0.5
+        conv_dropout_rate=0.1,    # Example conv dropout rate
+        dense_dropout_rate=0.5    # Example dense dropout rate
     )
     
     # Print model architecture

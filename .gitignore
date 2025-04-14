@@ -1,4 +1,4 @@
-venv
+venv/
 partA/wandb/
 partA/best_model.pth
 __pycache__/
