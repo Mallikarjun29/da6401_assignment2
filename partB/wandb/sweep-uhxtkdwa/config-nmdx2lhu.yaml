@@ -1,0 +1,10 @@
+wandb_version: 1
+
+dropout_rate:
+  value: 0.3
+epochs:
+  value: 15
+freeze_strategy:
+  value: upto_stage_2
+learning_rate:
+  value: 1.7444302246082553e-05
