@@ -96,7 +96,7 @@ def sweep_train():
     # Load dataset
     data_directory = "../inaturalist_12K"
     data_preparation = DataPreparation(data_directory, batch_size=32)
-    train_loader, val_loader = data_preparation.get_data_loaders()
+    train_loader, val_loader, test_loader = data_preparation.get_data_loaders()
     
     def train():
         with wandb.init() as run:  # Remove entity and project from here
@@ -143,8 +143,8 @@ if __name__ == "__main__":
             'dense_neurons': {'values': [256, 512, 1024]},
             'conv_dropout': {'values': [0, 0.1]},
             'dense_dropout': {'values': [0.3, 0.4, 0.5]},
-            'learning_rate': {'values': [1e-3, 1e-4]},
-            'epochs': {'values': [5, 10, 15, 20]}
+            'learning_rate': {'distribution': 'log_uniform_values', 'min': 1e-4, 'max': 1e-3},
+            'epochs': {'distribution': 'int_uniform', 'min': 2, 'max': 10} 
         }
     }
     

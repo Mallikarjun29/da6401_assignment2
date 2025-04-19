@@ -4,3 +4,6 @@ partA/best_model.pth
 __pycache__/
 partA/__pycache__/
 inaturalist_12K/
+partB/wandb/
+partB/best_model_resnet.pth
+partB/__pycache__/
