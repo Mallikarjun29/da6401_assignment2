@@ -2,21 +2,46 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import wandb
+import argparse
 from prepare_data import DataPreparation
 from model import ResNetModel
 import numpy as np
+
+def parse_args():
+    parser = argparse.ArgumentParser(description='Train ResNet model with command line arguments')
+    # Wandb arguments
+    parser.add_argument('-wp', '--wandb_project', type=str, default='da6401_assignment_2_resnet',
+                        help='Weights & Biases project name')
+    parser.add_argument('-we', '--wandb_entity', type=str, 
+                        default='da24s009-indiam-institute-of-technology-madras',
+                        help='Weights & Biases entity name')
+    # Training parameters
+    parser.add_argument('-e', '--epochs', type=int, default=10,
+                        help='Number of training epochs')
+    parser.add_argument('-b', '--batch_size', type=int, default=32,
+                        help='Training batch size')
+    parser.add_argument('-lr', '--learning_rate', type=float, default=0.001,
+                        help='Learning rate')
+    parser.add_argument('--freeze_strategy', type=str, 
+                        choices=['none', 'upto_stage_1', 'upto_stage_2', 'upto_stage_3'],
+                        default='none',
+                        help='Layer freezing strategy for transfer learning')
+    parser.add_argument('--dropout_rate', type=float, default=0.5,
+                        help='Dropout rate')
+    
+    return parser.parse_args()
 
 # Add device configuration
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f"Using device: {device}")
 
-def train_model(model, train_loader, val_loader, config):
+def train_model(model, train_loader, val_loader, args):
     criterion = nn.CrossEntropyLoss()
 
     # --- Optimizer Setup: Only optimize trainable parameters ---
     # Filter parameters that require gradients
     params_to_optimize = filter(lambda p: p.requires_grad, model.parameters())
-    optimizer = optim.Adam(params_to_optimize, lr=config.learning_rate)
+    optimizer = optim.Adam(params_to_optimize, lr=args.learning_rate)
     # --- End Optimizer Setup ---
 
     # Move model to GPU
@@ -28,7 +53,7 @@ def train_model(model, train_loader, val_loader, config):
 
     best_val_acc = 0.0
 
-    for epoch in range(config.epochs):
+    for epoch in range(args.epochs):
         # Training phase
         model.train() # Make sure model is in training mode
         running_loss = 0.0
@@ -86,71 +111,38 @@ def train_model(model, train_loader, val_loader, config):
             # Save model checkpoint only if it's the best so far
             # Consider saving to a unique path per run if needed
             torch.save(model.state_dict(), 'best_model_resnet.pth')
-            # wandb.save('best_model_resnet.pth') # Optional: save to wandb artifacts
-
-def sweep_train():
-    # Load dataset
-    data_directory = "../inaturalist_12K"
-    # Consider adding data augmentation here if not already done
-    data_preparation = DataPreparation(data_directory, batch_size=32)
-    train_loader, val_loader, test_loader = data_preparation.get_data_loaders()
-
-    def train():
-        with wandb.init() as run:
-            config = wandb.config
-
-            # Determine freeze_upto_stage based on config
-            # Handle the case where config.freeze_strategy might be 'all' or 'none'
-            freeze_stage = None
-            if config.freeze_strategy == 'upto_stage_1':
-                freeze_stage = 1
-            elif config.freeze_strategy == 'upto_stage_2':
-                freeze_stage = 2
-            elif config.freeze_strategy == 'upto_stage_3':
-                freeze_stage = 3
-            # 'none' corresponds to freeze_stage = None (fine-tune all)
-
-            # Updated model creation for ResNet with freezing strategy
-            model = ResNetModel(
-                num_classes=10,
-                dropout_rate=config.dropout_rate,
-                freeze_upto_stage=freeze_stage # Pass the calculated stage
-            )
-
-            # Updated run name for ResNet parameters including freeze strategy
-            run.name = f"freeze_{config.freeze_strategy}_dr{config.dropout_rate}_lr{round(config.learning_rate,5)}_ep{config.epochs}"
-
-            train_model(model, train_loader, val_loader, config)
-
-    return train
+            wandb.save('best_model_resnet.pth') # Optional: save to wandb artifacts
 
 if __name__ == "__main__":
-    # Updated sweep configuration for ResNet with freezing strategies
-    sweep_config = {
-        'method': 'bayes', # Or 'random'
-        'metric': {
-            'name': 'val_acc',
-            'goal': 'maximize'
-        },
-        # 'early_terminate': { # Optional: Add early stopping if desired
-        #     'type': 'hyperband',
-        #     'min_iter': 5, # Min epochs before stopping
-        #     'eta': 2
-        # },
-        'parameters': {
-            'dropout_rate': {'values': [0.3, 0.5]},
-            'freeze_strategy': {'values': ['none', 'upto_stage_1', 'upto_stage_2', 'upto_stage_3']}, # 'none' means fine-tune all
-            'learning_rate': {'distribution': 'log_uniform_values', 'min': 1e-5, 'max': 1e-3}, # Log scale for LR
-            'epochs': {'distribution': 'int_uniform', 'min': 2, 'max': 10} # Adjust epochs as needed
-        }
-    }
-
-    # Initialize sweep
-    sweep_id = wandb.sweep(
-        sweep_config,
-        entity='da24s009-indiam-institute-of-technology-madras', # Replace with your entity if different
-        project="da6401_assignment_2_resnet"
+    args = parse_args()
+    
+    # Initialize wandb
+    wandb.init(
+        project=args.wandb_project,
+        entity=args.wandb_entity,
+        config=args
     )
-
-    # Run sweep
-    wandb.agent(sweep_id, function=sweep_train(), count=15)
+    
+    # Load dataset
+    data_directory = "../inaturalist_12K"
+    data_preparation = DataPreparation(data_directory, batch_size=args.batch_size)
+    train_loader, val_loader, test_loader = data_preparation.get_data_loaders()
+    
+    # Determine freeze stage
+    freeze_stage = None
+    if args.freeze_strategy == 'upto_stage_1':
+        freeze_stage = 1
+    elif args.freeze_strategy == 'upto_stage_2':
+        freeze_stage = 2
+    elif args.freeze_strategy == 'upto_stage_3':
+        freeze_stage = 3
+    
+    # Create model with command line parameters
+    model = ResNetModel(
+        num_classes=10,
+        dropout_rate=args.dropout_rate,
+        freeze_upto_stage=freeze_stage
+    )
+    
+    # Train model
+    train_model(model, train_loader, val_loader, args)
