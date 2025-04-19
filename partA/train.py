@@ -121,7 +121,7 @@ def sweep_train():
             )
             
             # Set run name without calling save
-            run.name = f"bf{config.base_filters}_nl{config.n_layers}_fs{config.filter_strategy}_act{config.activation}_dn{config.dense_neurons}_cdr{config.conv_dropout}_ddr{config.dense_dropout}_lr{config.learning_rate}_ep{config.epochs}"
+            run.name = f"bf{config.base_filters}_nl{config.n_layers}_fs{config.filter_strategy}_act{config.activation}_dn{config.dense_neurons}_cdr{config.conv_dropout}_ddr{config.dense_dropout}_lr{round(config.learning_rate,5)}_ep{config.epochs}"
             
             train_model(model, train_loader, val_loader, config)
 
@@ -144,7 +144,7 @@ if __name__ == "__main__":
             'conv_dropout': {'values': [0, 0.1]},
             'dense_dropout': {'values': [0.3, 0.4, 0.5]},
             'learning_rate': {'distribution': 'log_uniform_values', 'min': 1e-4, 'max': 1e-3},
-            'epochs': {'distribution': 'int_uniform', 'min': 2, 'max': 10} 
+            'epochs': {'distribution': 'int_uniform', 'min': 2, 'max': 15} 
         }
     }
     
@@ -156,4 +156,4 @@ if __name__ == "__main__":
     )
     
     # Run sweep
-    wandb.agent(sweep_id, function=sweep_train(), count=100)
+    wandb.agent(sweep_id, function=sweep_train(), count=50)
