@@ -1,3 +1,19 @@
+"""
+sweep_experiment.py
+
+This script performs hyperparameter optimization for the CNNModel using Weights & Biases (wandb).
+It includes functions for training the model, generating filter counts, and running sweeps with different configurations.
+
+Functions:
+    train_model: Trains the CNNModel with specified configurations and logs metrics.
+    get_filter_counts: Generates filter counts for convolutional layers based on the strategy.
+    sweep_train: Sets up the sweep configuration and runs the training process.
+
+Example Usage:
+    # Run the script to start a sweep
+    python sweep_experiment.py
+"""
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -11,6 +27,18 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f"Using device: {device}")
 
 def train_model(model, train_loader, val_loader, config):
+    """
+    Trains the CNNModel and evaluates it on the validation set.
+
+    Args:
+        model (nn.Module): The CNNModel to train.
+        train_loader (DataLoader): DataLoader for the training dataset.
+        val_loader (DataLoader): DataLoader for the validation dataset.
+        config (wandb.Config): Configuration object containing hyperparameters.
+
+    Logs:
+        Metrics such as training loss, validation loss, and accuracy to wandb.
+    """
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=config.learning_rate)
     
@@ -82,7 +110,17 @@ def train_model(model, train_loader, val_loader, config):
             wandb.save('best_model.pth')
 
 def get_filter_counts(base_filters, n_layers, strategy):
-    """Helper function to generate filter counts based on strategy"""
+    """
+    Helper function to generate filter counts for convolutional layers based on the strategy.
+
+    Args:
+        base_filters (int): Number of base filters for the first layer.
+        n_layers (int): Number of convolutional layers.
+        strategy (str): Strategy for generating filter counts ('same', 'doubling', 'halving').
+
+    Returns:
+        list: A list of filter counts for each layer.
+    """
     if strategy == 'same':
         return [base_filters] * n_layers
     elif strategy == 'doubling':
@@ -93,13 +131,22 @@ def get_filter_counts(base_filters, n_layers, strategy):
         return [base_filters] * n_layers
 
 def sweep_train():
+    """
+    Sets up the sweep configuration and runs the training process.
+
+    Loads the dataset, initializes the CNNModel with different configurations,
+    and trains the model using wandb sweeps.
+
+    Returns:
+        function: A function to be used by wandb.agent for running sweeps.
+    """
     # Load dataset
     data_directory = "../inaturalist_12K"
     data_preparation = DataPreparation(data_directory, batch_size=32)
     train_loader, val_loader, test_loader = data_preparation.get_data_loaders()
     
     def train():
-        with wandb.init() as run:  # Remove entity and project from here
+        with wandb.init() as run:
             config = wandb.config
             
             conv_filters = get_filter_counts(
@@ -126,8 +173,13 @@ def sweep_train():
             train_model(model, train_loader, val_loader, config)
 
     return train
-# bf3_nl4_fsdoubling_actGELU_dn256_cdr0_ddr0.5_lr0.001_ep20
+
 if __name__ == "__main__":
+    """
+    Main entry point for the script.
+
+    Sets up the sweep configuration and starts the wandb agent to perform hyperparameter optimization.
+    """
     # Updated sweep configuration with early stopping
     sweep_config = {
         'method': 'bayes',

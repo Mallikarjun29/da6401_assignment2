@@ -1,3 +1,18 @@
+"""
+sweep_experiment.py
+
+This script performs hyperparameter optimization for the ResNetModel using Weights & Biases (wandb).
+It includes functions for training the model, logging metrics, and running sweeps with different configurations.
+
+Functions:
+    train_model: Trains the ResNetModel with specified configurations and logs metrics.
+    sweep_train: Sets up the sweep configuration and runs the training process.
+
+Example Usage:
+    # Run the script to start a sweep
+    python sweep_experiment.py
+"""
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -11,6 +26,18 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f"Using device: {device}")
 
 def train_model(model, train_loader, val_loader, config):
+    """
+    Trains the ResNetModel and evaluates it on the validation set.
+
+    Args:
+        model (nn.Module): The ResNetModel to train.
+        train_loader (DataLoader): DataLoader for the training dataset.
+        val_loader (DataLoader): DataLoader for the validation dataset.
+        config (wandb.Config): Configuration object containing hyperparameters.
+
+    Logs:
+        Metrics such as training loss, validation loss, and accuracy to wandb.
+    """
     criterion = nn.CrossEntropyLoss()
 
     # --- Optimizer Setup: Only optimize trainable parameters ---
@@ -30,7 +57,7 @@ def train_model(model, train_loader, val_loader, config):
 
     for epoch in range(config.epochs):
         # Training phase
-        model.train() # Make sure model is in training mode
+        model.train()  # Make sure model is in training mode
         running_loss = 0.0
         correct = 0
         total = 0
@@ -53,7 +80,7 @@ def train_model(model, train_loader, val_loader, config):
         train_acc = 100. * correct / total
 
         # Validation phase
-        model.eval() # Switch to evaluation mode
+        model.eval()  # Switch to evaluation mode
         val_loss = 0.0
         correct = 0
         total = 0
@@ -75,23 +102,30 @@ def train_model(model, train_loader, val_loader, config):
         # Log metrics to wandb
         wandb.log({
             "epoch": epoch,
-            "train_loss": running_loss/len(train_loader),
+            "train_loss": running_loss / len(train_loader),
             "train_acc": train_acc,
-            "val_loss": val_loss/len(val_loader),
+            "val_loss": val_loss / len(val_loader),
             "val_acc": val_acc
         })
 
         if val_acc > best_val_acc:
             best_val_acc = val_acc
             # Save model checkpoint only if it's the best so far
-            # Consider saving to a unique path per run if needed
             torch.save(model.state_dict(), 'best_model_resnet.pth')
             # wandb.save('best_model_resnet.pth') # Optional: save to wandb artifacts
 
 def sweep_train():
+    """
+    Sets up the sweep configuration and runs the training process.
+
+    Loads the dataset, initializes the ResNetModel with different configurations,
+    and trains the model using wandb sweeps.
+
+    Returns:
+        function: A function to be used by wandb.agent for running sweeps.
+    """
     # Load dataset
     data_directory = "../inaturalist_12K"
-    # Consider adding data augmentation here if not already done
     data_preparation = DataPreparation(data_directory, batch_size=32)
     train_loader, val_loader, test_loader = data_preparation.get_data_loaders()
 
@@ -100,7 +134,6 @@ def sweep_train():
             config = wandb.config
 
             # Determine freeze_upto_stage based on config
-            # Handle the case where config.freeze_strategy might be 'all' or 'none'
             freeze_stage = None
             if config.freeze_strategy == 'upto_stage_1':
                 freeze_stage = 1
@@ -108,47 +141,45 @@ def sweep_train():
                 freeze_stage = 2
             elif config.freeze_strategy == 'upto_stage_3':
                 freeze_stage = 3
-            # 'none' corresponds to freeze_stage = None (fine-tune all)
 
-            # Updated model creation for ResNet with freezing strategy
+            # Initialize model with the specified freeze strategy
             model = ResNetModel(
                 num_classes=10,
                 dropout_rate=config.dropout_rate,
-                freeze_upto_stage=freeze_stage # Pass the calculated stage
+                freeze_upto_stage=freeze_stage
             )
 
-            # Updated run name for ResNet parameters including freeze strategy
-            run.name = f"freeze_{config.freeze_strategy}_dr{config.dropout_rate}_lr{round(config.learning_rate,5)}_ep{config.epochs}"
+            # Set run name for wandb
+            run.name = f"freeze_{config.freeze_strategy}_dr{config.dropout_rate}_lr{round(config.learning_rate, 5)}_ep{config.epochs}"
 
             train_model(model, train_loader, val_loader, config)
 
     return train
 
 if __name__ == "__main__":
-    # Updated sweep configuration for ResNet with freezing strategies
+    """
+    Main entry point for the script.
+
+    Sets up the sweep configuration and starts the wandb agent to perform hyperparameter optimization.
+    """
     sweep_config = {
-        'method': 'bayes', # Or 'random'
+        'method': 'bayes',
         'metric': {
             'name': 'val_acc',
             'goal': 'maximize'
         },
-        # 'early_terminate': { # Optional: Add early stopping if desired
-        #     'type': 'hyperband',
-        #     'min_iter': 5, # Min epochs before stopping
-        #     'eta': 2
-        # },
         'parameters': {
             'dropout_rate': {'values': [0.3, 0.5]},
-            'freeze_strategy': {'values': ['none', 'upto_stage_1', 'upto_stage_2', 'upto_stage_3']}, # 'none' means fine-tune all
-            'learning_rate': {'distribution': 'log_uniform_values', 'min': 1e-5, 'max': 1e-3}, # Log scale for LR
-            'epochs': {'distribution': 'int_uniform', 'min': 2, 'max': 10} # Adjust epochs as needed
+            'freeze_strategy': {'values': ['none', 'upto_stage_1', 'upto_stage_2', 'upto_stage_3']},
+            'learning_rate': {'distribution': 'log_uniform_values', 'min': 1e-5, 'max': 1e-3},
+            'epochs': {'distribution': 'int_uniform', 'min': 2, 'max': 10}
         }
     }
 
     # Initialize sweep
     sweep_id = wandb.sweep(
         sweep_config,
-        entity='da24s009-indiam-institute-of-technology-madras', # Replace with your entity if different
+        entity='da24s009-indiam-institute-of-technology-madras',
         project="da6401_assignment_2_resnet"
     )
 

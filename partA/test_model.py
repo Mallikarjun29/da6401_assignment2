@@ -1,3 +1,17 @@
+"""
+test_model.py
+
+This script evaluates the best CNNModel on the test dataset using metrics such as accuracy, confusion matrix, and classification report.
+It also visualizes predictions and logs results to Weights & Biases (wandb).
+
+Functions:
+    unnormalize: Reverts the normalization applied to images for visualization.
+
+Example Usage:
+    # Run the script to evaluate the best model
+    python test_model.py
+"""
+
 import torch
 import torch.nn as nn
 import matplotlib.pyplot as plt
@@ -169,6 +183,15 @@ labels = torch.tensor(all_labels)[:num_samples]  # Remove unnecessary cat()
 class_names = data_preparation.classes
 
 def unnormalize(img):
+    """
+    Reverts the normalization applied to images for visualization.
+
+    Args:
+        img (torch.Tensor): Normalized image tensor.
+
+    Returns:
+        torch.Tensor: Unnormalized image tensor.
+    """
     mean = torch.tensor([0.485, 0.456, 0.406]).view(3, 1, 1)
     std = torch.tensor([0.229, 0.224, 0.225]).view(3, 1, 1)
     return img * std + mean
@@ -178,10 +201,6 @@ plt.style.use('seaborn-v0_8-darkgrid')  # Updated style name
 fig, axes = plt.subplots(num_rows, num_cols, figsize=(15, 25))
 fig.suptitle('Test Set Predictions of Best Model', 
              fontsize=20, fontweight='bold', y=0.999)
-
-# plt.figtext(0.5, 0.94, 
-#            f'Model: {best_run.name}\nTest Accuracy: {test_acc:.2f}%', 
-#            ha='center', fontsize=12, style='italic')
 
 for i in range(num_rows):
     for j in range(num_cols):

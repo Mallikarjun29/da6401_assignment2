@@ -1,3 +1,5 @@
+"""Dataset handling utilities for iNaturalist dataset including validation and data loading."""
+
 import os
 import torch
 import numpy as np
@@ -6,22 +8,24 @@ from torch.utils.data import DataLoader, Subset, random_split
 from sklearn.model_selection import train_test_split
 
 class INaturalistDataset:
+    """Dataset validation and inspection utilities.
+    
+    Provides tools to validate dataset structure and inspect image files.
     """
-    A class to handle the iNaturalist dataset inspection and validation.
-    (Note: Loading is now primarily handled by DataPreparation)
-    """
+    
     def __init__(self, data_dir):
-        """
-        Initializes the dataset helper.
-
+        """Initialize dataset validator.
+        
         Args:
-            data_dir (str): Path to the root dataset directory (e.g., '../inaturalist_12K').
+            data_dir (str): Root directory containing dataset
         """
         self.data_dir = data_dir
 
     def inspect_directory(self, dir_path):
-        """
-        Inspects directory contents and prints detailed information about files.
+        """Analyze directory contents and file extensions.
+        
+        Args:
+            dir_path (str): Path to directory for inspection
         """
         print(f"\nInspecting directory: {dir_path}")
         if not os.path.exists(dir_path):
@@ -53,8 +57,13 @@ class INaturalistDataset:
                 print(f"- {item} ({'dir' if os.path.isdir(os.path.join(dir_path, item)) else 'file'})")
 
     def validate_dataset_subset(self, subset_name):
-        """
-        Validates the dataset structure for a given subset (train/test).
+        """Validate structure and contents of dataset subset.
+        
+        Args:
+            subset_name (str): Name of subset (train/val)
+            
+        Returns:
+            bool: True if validation passes
         """
         subset_dir = os.path.join(self.data_dir, subset_name)
         print(f"\nValidating {subset_name} dataset structure at: {subset_dir}")
@@ -83,7 +92,6 @@ class INaturalistDataset:
                 if file.lower().endswith(valid_extensions):
                     valid_files_found = True
                     image_files.append(file)
-                    # break # Check all files for inspection if needed
 
             if not valid_files_found:
                 print(f"\nWarning: No valid images found in class '{class_name}' directory")
@@ -91,9 +99,6 @@ class INaturalistDataset:
                 print(f"Supported extensions are: {', '.join(valid_extensions)}")
                 self.inspect_directory(class_dir) # Show contents if no valid images
                 all_classes_valid = False
-            # else:
-            #     print(f"Class '{class_name}': Found {len(image_files)} valid images.")
-
 
         if all_classes_valid:
              print(f"{subset_name} dataset structure appears valid.")
@@ -103,14 +108,26 @@ class INaturalistDataset:
 
 
 class DataPreparation:
+    """Data preparation utilities for model training.
+    
+    Handles data loading, preprocessing, and train/val/test splitting.
+    """
+    
     def __init__(self, data_dir, batch_size=32, num_workers=4, val_split=0.2):
+        """Initialize data preparation.
+        
+        Args:
+            data_dir (str): Dataset root directory
+            batch_size (int): Batch size for dataloaders 
+            num_workers (int): Number of worker processes
+            val_split (float): Validation set proportion
+        """
         self.data_dir = data_dir
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.val_split = val_split # Proportion of original train data to use for validation
 
         # Define data transformations (consistent for train, val, test)
-        # Consider adding augmentation for the training set later if needed
         self.transform = transforms.Compose([
             transforms.Resize((224, 224)),
             transforms.ToTensor(),
@@ -118,10 +135,13 @@ class DataPreparation:
         ])
 
     def get_data_loaders(self):
-        """
-        Loads original train data, splits into new train/val sets.
-        Loads original val data as the test set.
-        Returns train_loader, val_loader, test_loader.
+        """Create data loaders for model training.
+        
+        Returns:
+            tuple: (train_loader, val_loader, test_loader)
+            
+        Raises:
+            FileNotFoundError: If dataset directories not found
         """
         original_train_dir = os.path.join(self.data_dir, 'train')
         test_dir = os.path.join(self.data_dir, 'val') # Original 'val' is now 'test'
@@ -161,7 +181,6 @@ class DataPreparation:
         print(f"New validation data size: {len(new_val_dataset)}")
         print(f"Test data size: {len(test_dataset)}")
 
-
         # Create data loaders
         train_loader = DataLoader(
             new_train_dataset,
@@ -193,8 +212,8 @@ class DataPreparation:
         return train_loader, val_loader, test_loader
 
 
-# Example usage
 if __name__ == "__main__":
+    """Validate dataset structure and test data loading."""
     data_directory = "../inaturalist_12K"
     # Use the helper class for validation checks
     dataset_validator = INaturalistDataset(data_directory)
@@ -203,7 +222,6 @@ if __name__ == "__main__":
     dataset_validator.validate_dataset_subset('train') # Validate original train folder structure
     dataset_validator.validate_dataset_subset('val')   # Validate original val (now test) folder structure
     print("--- Validation Complete ---")
-
 
     try:
         # Get the loaders (which performs the split)

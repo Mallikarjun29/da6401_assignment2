@@ -1,3 +1,5 @@
+"""Training script for ResNet50 model with transfer learning strategies."""
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -8,14 +10,18 @@ from model import ResNetModel
 import numpy as np
 
 def parse_args():
-    parser = argparse.ArgumentParser(description='Train ResNet model with command line arguments')
-    # Wandb arguments
+    """Parse command line arguments for model training.
+    
+    Returns:
+        argparse.Namespace: Parsed arguments
+    """
+    parser = argparse.ArgumentParser(description='Train ResNet model with transfer learning')
+    
     parser.add_argument('-wp', '--wandb_project', type=str, default='da6401_assignment_2_resnet',
                         help='Weights & Biases project name')
     parser.add_argument('-we', '--wandb_entity', type=str, 
                         default='da24s009-indiam-institute-of-technology-madras',
                         help='Weights & Biases entity name')
-    # Training parameters
     parser.add_argument('-e', '--epochs', type=int, default=10,
                         help='Number of training epochs')
     parser.add_argument('-b', '--batch_size', type=int, default=32,
@@ -25,45 +31,39 @@ def parse_args():
     parser.add_argument('--freeze_strategy', type=str, 
                         choices=['none', 'upto_stage_1', 'upto_stage_2', 'upto_stage_3'],
                         default='none',
-                        help='Layer freezing strategy for transfer learning')
+                        help='Layer freezing strategy')
     parser.add_argument('--dropout_rate', type=float, default=0.5,
                         help='Dropout rate')
     
     return parser.parse_args()
 
-# Add device configuration
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-print(f"Using device: {device}")
-
 def train_model(model, train_loader, val_loader, args):
+    """Train the model using specified configuration.
+    
+    Args:
+        model (nn.Module): ResNet model to train
+        train_loader (DataLoader): Training data loader
+        val_loader (DataLoader): Validation data loader
+        args (argparse.Namespace): Training arguments
+    """
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     criterion = nn.CrossEntropyLoss()
-
-    # --- Optimizer Setup: Only optimize trainable parameters ---
-    # Filter parameters that require gradients
     params_to_optimize = filter(lambda p: p.requires_grad, model.parameters())
     optimizer = optim.Adam(params_to_optimize, lr=args.learning_rate)
-    # --- End Optimizer Setup ---
 
-    # Move model to GPU
     model = model.to(device)
     criterion = criterion.to(device)
-
-    # Watch model in wandb
     wandb.watch(model, criterion, log="all")
-
     best_val_acc = 0.0
 
     for epoch in range(args.epochs):
-        # Training phase
-        model.train() # Make sure model is in training mode
+        model.train()
         running_loss = 0.0
         correct = 0
         total = 0
 
         for inputs, labels in train_loader:
-            # Move data to GPU
             inputs, labels = inputs.to(device), labels.to(device)
-
             optimizer.zero_grad()
             outputs = model(inputs)
             loss = criterion(outputs, labels)
@@ -77,17 +77,14 @@ def train_model(model, train_loader, val_loader, args):
 
         train_acc = 100. * correct / total
 
-        # Validation phase
-        model.eval() # Switch to evaluation mode
+        model.eval()
         val_loss = 0.0
         correct = 0
         total = 0
 
         with torch.no_grad():
             for inputs, labels in val_loader:
-                # Move data to GPU
                 inputs, labels = inputs.to(device), labels.to(device)
-
                 outputs = model(inputs)
                 loss = criterion(outputs, labels)
                 val_loss += loss.item()
@@ -97,7 +94,6 @@ def train_model(model, train_loader, val_loader, args):
 
         val_acc = 100. * correct / total
 
-        # Log metrics to wandb
         wandb.log({
             "epoch": epoch,
             "train_loss": running_loss/len(train_loader),
@@ -108,27 +104,17 @@ def train_model(model, train_loader, val_loader, args):
 
         if val_acc > best_val_acc:
             best_val_acc = val_acc
-            # Save model checkpoint only if it's the best so far
-            # Consider saving to a unique path per run if needed
             torch.save(model.state_dict(), 'best_model_resnet.pth')
-            wandb.save('best_model_resnet.pth') # Optional: save to wandb artifacts
+            wandb.save('best_model_resnet.pth')
 
 if __name__ == "__main__":
     args = parse_args()
+    wandb.init(project=args.wandb_project, entity=args.wandb_entity, config=args)
     
-    # Initialize wandb
-    wandb.init(
-        project=args.wandb_project,
-        entity=args.wandb_entity,
-        config=args
-    )
-    
-    # Load dataset
     data_directory = "../inaturalist_12K"
     data_preparation = DataPreparation(data_directory, batch_size=args.batch_size)
     train_loader, val_loader, test_loader = data_preparation.get_data_loaders()
     
-    # Determine freeze stage
     freeze_stage = None
     if args.freeze_strategy == 'upto_stage_1':
         freeze_stage = 1
@@ -137,12 +123,10 @@ if __name__ == "__main__":
     elif args.freeze_strategy == 'upto_stage_3':
         freeze_stage = 3
     
-    # Create model with command line parameters
     model = ResNetModel(
         num_classes=10,
         dropout_rate=args.dropout_rate,
         freeze_upto_stage=freeze_stage
     )
     
-    # Train model
     train_model(model, train_loader, val_loader, args)
