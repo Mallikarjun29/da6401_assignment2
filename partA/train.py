@@ -2,17 +2,53 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import wandb
+import argparse
 from prepare_data import DataPreparation
 from model import CNNModel
 import numpy as np
+
+def parse_args():
+    parser = argparse.ArgumentParser(description='Train CNN model with command line arguments')
+    # Wandb arguments
+    parser.add_argument('-wp', '--wandb_project', type=str, default='da6401_assignment_2',
+                        help='Weights & Biases project name')
+    parser.add_argument('-we', '--wandb_entity', type=str, 
+                        default='da24s009-indiam-institute-of-technology-madras',
+                        help='Weights & Biases entity name')
+    # Training parameters
+    parser.add_argument('-e', '--epochs', type=int, default=15,
+                        help='Number of training epochs')
+    parser.add_argument('-b', '--batch_size', type=int, default=32,
+                        help='Training batch size')
+    parser.add_argument('-lr', '--learning_rate', type=float, default=0.001,
+                        help='Learning rate')
+    # Model architecture parameters
+    parser.add_argument('--base_filters', type=int, default=32,
+                        help='Base number of filters')
+    parser.add_argument('--n_layers', type=int, default=5,
+                        help='Number of convolutional layers')
+    parser.add_argument('--filter_strategy', type=str, default='doubling',
+                        choices=['same', 'doubling', 'halving'],
+                        help='Filter count strategy')
+    parser.add_argument('--activation', type=str, default='ReLU',
+                        choices=['ReLU', 'GELU', 'SiLU'],
+                        help='Activation function')
+    parser.add_argument('--dense_neurons', type=int, default=512,
+                        help='Number of neurons in dense layer')
+    parser.add_argument('--conv_dropout', type=float, default=0.0,
+                        help='Dropout rate for convolutional layers')
+    parser.add_argument('--dense_dropout', type=float, default=0.4,
+                        help='Dropout rate for dense layers')
+    
+    return parser.parse_args()
 
 # Add device configuration
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f"Using device: {device}")
 
-def train_model(model, train_loader, val_loader, config):
+def train_model(model, train_loader, val_loader, args):
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=config.learning_rate)
+    optimizer = optim.Adam(model.parameters(), lr=args.learning_rate)
     
     # Move model to GPU
     model = model.to(device)
@@ -23,7 +59,7 @@ def train_model(model, train_loader, val_loader, config):
     
     best_val_acc = 0.0
     
-    for epoch in range(config.epochs):
+    for epoch in range(args.epochs):
         # Training phase
         model.train()
         running_loss = 0.0
@@ -31,7 +67,6 @@ def train_model(model, train_loader, val_loader, config):
         total = 0
         
         for inputs, labels in train_loader:
-            # Move data to GPU
             inputs, labels = inputs.to(device), labels.to(device)
             
             optimizer.zero_grad()
@@ -55,7 +90,6 @@ def train_model(model, train_loader, val_loader, config):
         
         with torch.no_grad():
             for inputs, labels in val_loader:
-                # Move data to GPU
                 inputs, labels = inputs.to(device), labels.to(device)
                 
                 outputs = model(inputs)
@@ -82,7 +116,6 @@ def train_model(model, train_loader, val_loader, config):
             wandb.save('best_model.pth')
 
 def get_filter_counts(base_filters, n_layers, strategy):
-    """Helper function to generate filter counts based on strategy"""
     if strategy == 'same':
         return [base_filters] * n_layers
     elif strategy == 'doubling':
@@ -92,68 +125,39 @@ def get_filter_counts(base_filters, n_layers, strategy):
     else:
         return [base_filters] * n_layers
 
-def sweep_train():
-    # Load dataset
-    data_directory = "../inaturalist_12K"
-    data_preparation = DataPreparation(data_directory, batch_size=32)
-    train_loader, val_loader, test_loader = data_preparation.get_data_loaders()
-    
-    def train():
-        with wandb.init() as run:  # Remove entity and project from here
-            config = wandb.config
-            
-            conv_filters = get_filter_counts(
-                config.base_filters, 
-                config.n_layers, 
-                config.filter_strategy
-            )
-            
-            # Updated model creation with separate dropout rates
-            model = CNNModel(
-                num_classes=10,
-                conv_filters=conv_filters,
-                filter_size=3,
-                dense_neurons=[config.dense_neurons],
-                conv_activation=getattr(nn, config.activation),
-                dense_activation=getattr(nn, config.activation),
-                conv_dropout_rate=config.conv_dropout,
-                dense_dropout_rate=config.dense_dropout
-            )
-            
-            # Set run name without calling save
-            run.name = f"bf{config.base_filters}_nl{config.n_layers}_fs{config.filter_strategy}_act{config.activation}_dn{config.dense_neurons}_cdr{config.conv_dropout}_ddr{config.dense_dropout}_lr{round(config.learning_rate,5)}_ep{config.epochs}"
-            
-            train_model(model, train_loader, val_loader, config)
-
-    return train
-# bf3_nl4_fsdoubling_actGELU_dn256_cdr0_ddr0.5_lr0.001_ep20
 if __name__ == "__main__":
-    # Updated sweep configuration with early stopping
-    sweep_config = {
-        'method': 'bayes',
-        'metric': {
-            'name': 'val_acc',
-            'goal': 'maximize'
-        },
-        'parameters': {
-            'base_filters': {'values': [32, 64, 128]},
-            'n_layers': {'values': [4, 5]},
-            'filter_strategy': {'values': ['same', 'doubling', 'halving']},
-            'activation': {'values': ['ReLU', 'GELU', 'SiLU']},
-            'dense_neurons': {'values': [256, 512, 1024]},
-            'conv_dropout': {'values': [0, 0.1]},
-            'dense_dropout': {'values': [0.3, 0.4, 0.5]},
-            'learning_rate': {'distribution': 'log_uniform_values', 'min': 1e-4, 'max': 1e-3},
-            'epochs': {'distribution': 'int_uniform', 'min': 2, 'max': 15} 
-        }
-    }
+    args = parse_args()
     
-    # Initialize sweep with entity and project
-    sweep_id = wandb.sweep(
-        sweep_config,
-        entity='da24s009-indiam-institute-of-technology-madras',
-        project="da6401_assignment_2"
+    # Initialize wandb
+    wandb.init(
+        project=args.wandb_project,
+        entity=args.wandb_entity,
+        config=args
     )
     
-    # Run sweep
-    wandb.agent(sweep_id, function=sweep_train(), count=50)
+    # Load dataset with specified batch size
+    data_directory = "../inaturalist_12K"
+    data_preparation = DataPreparation(data_directory, batch_size=args.batch_size)
+    train_loader, val_loader, test_loader = data_preparation.get_data_loaders()
+    
+    # Get filter configuration
+    conv_filters = get_filter_counts(
+        args.base_filters,
+        args.n_layers,
+        args.filter_strategy
+    )
+    
+    # Create model with command line parameters
+    model = CNNModel(
+        num_classes=10,
+        conv_filters=conv_filters,
+        filter_size=3,
+        dense_neurons=[args.dense_neurons],
+        conv_activation=getattr(nn, args.activation),
+        dense_activation=getattr(nn, args.activation),
+        conv_dropout_rate=args.conv_dropout,
+        dense_dropout_rate=args.dense_dropout
+    )
+    
+    # Train model
+    train_model(model, train_loader, val_loader, args)
