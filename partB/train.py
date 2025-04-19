@@ -118,7 +118,7 @@ def sweep_train():
             )
 
             # Updated run name for ResNet parameters including freeze strategy
-            run.name = f"freeze_{config.freeze_strategy}_dr{config.dropout_rate}_lr{config.learning_rate}_ep{config.epochs}"
+            run.name = f"freeze_{config.freeze_strategy}_dr{config.dropout_rate}_lr{round(config.learning_rate,5)}_ep{config.epochs}"
 
             train_model(model, train_loader, val_loader, config)
 
@@ -141,7 +141,7 @@ if __name__ == "__main__":
             'dropout_rate': {'values': [0.3, 0.5]},
             'freeze_strategy': {'values': ['none', 'upto_stage_1', 'upto_stage_2', 'upto_stage_3']}, # 'none' means fine-tune all
             'learning_rate': {'distribution': 'log_uniform_values', 'min': 1e-5, 'max': 1e-3}, # Log scale for LR
-            'epochs': {'values': [15, 20]} # Adjust epochs as needed
+            'epochs': {'distribution': 'int_uniform', 'min': 2, 'max': 10} # Adjust epochs as needed
         }
     }
 
@@ -149,9 +149,8 @@ if __name__ == "__main__":
     sweep_id = wandb.sweep(
         sweep_config,
         entity='da24s009-indiam-institute-of-technology-madras', # Replace with your entity if different
-        project="da6401_assignment_2", # Use a specific project name for Part B
-        tags=["resnet"]
+        project="da6401_assignment_2_resnet"
     )
 
     # Run sweep
-    wandb.agent(sweep_id, function=sweep_train(), count=15) # Adjust count as needed
+    wandb.agent(sweep_id, function=sweep_train(), count=15)
