@@ -93,7 +93,7 @@ def sweep_train():
     data_directory = "../inaturalist_12K"
     # Consider adding data augmentation here if not already done
     data_preparation = DataPreparation(data_directory, batch_size=32)
-    train_loader, val_loader = data_preparation.get_data_loaders()
+    train_loader, val_loader, test_loader = data_preparation.get_data_loaders()
 
     def train():
         with wandb.init() as run:
